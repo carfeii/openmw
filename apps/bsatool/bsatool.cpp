@@ -252,6 +252,23 @@ int extractAll(std::unique_ptr<File>& bsa, Arguments& info)
         auto target = info.outdir;
         target /= Misc::StringUtils::stringToU8String(extractPath);
 
+        // Reject an entry whose name would resolve outside the output
+        // directory (e.g. via "../" segments or an absolute path baked into
+        // the archive's own file table). Archive contents are untrusted
+        // data, so this is checked lexically rather than by resolving
+        // symlinks/existing components on disk, matching how the path is
+        // about to be used below.
+        const auto normalizedOutdir = info.outdir.lexically_normal();
+        const auto normalizedTarget = target.lexically_normal();
+        const auto relativeToOutdir = normalizedTarget.lexically_relative(normalizedOutdir);
+        if (relativeToOutdir.empty() || *relativeToOutdir.begin() == "..")
+        {
+            std::cout << "WARNING: Skipping entry with an unsafe path that would extract outside "
+                         "the output directory: "
+                      << extractPath << std::endl;
+            continue;
+        }
+
         // Create the directory hierarchy
         std::filesystem::create_directories(target.parent_path());
 
